@@ -1,0 +1,4 @@
+*.obj
+*.vrscene
+*.json
+build/
