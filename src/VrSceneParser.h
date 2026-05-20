@@ -49,8 +49,8 @@ struct VrSceneParser {
 };
 
 struct JsonWriter {
-    static std::string write(const VrSceneValue& val, int indent = 0);
-    static std::string write(const VrSceneDocument& doc, int indent = 0);
+    static std::string write(const VrSceneValue& val, int indent = 0, bool uncompressed = false);
+    static std::string write(const VrSceneDocument& doc, int indent = 0, bool uncompressed = false);
     static std::string indent_str(int indent);
     static std::string escape_json(const std::string& s);
 };

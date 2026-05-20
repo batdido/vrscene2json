@@ -41,6 +41,27 @@ static std::string strip_comments(const std::string& line) {
     return line;
 }
 
+// ── base64 encoder ───────────────────────────────────────────────────────
+
+static const char b64_enc_table[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static std::string base64_encode(const void* data, size_t len) {
+    const uint8_t* bytes = (const uint8_t*)data;
+    std::string out;
+    out.reserve((len + 2) / 3 * 4);
+    for (size_t i = 0; i < len; i += 3) {
+        uint32_t v = (uint32_t)bytes[i] << 16;
+        if (i + 1 < len) v |= (uint32_t)bytes[i + 1] << 8;
+        if (i + 2 < len) v |= (uint32_t)bytes[i + 2];
+        out += b64_enc_table[(v >> 18) & 0x3F];
+        out += b64_enc_table[(v >> 12) & 0x3F];
+        out += (i + 1 < len) ? b64_enc_table[(v >> 6) & 0x3F] : '=';
+        out += (i + 2 < len) ? b64_enc_table[v & 0x3F] : '=';
+    }
+    return out;
+}
+
 // ── base64 decode ────────────────────────────────────────────────────────
 
 static const unsigned char b64_dec[256] = {
@@ -864,7 +885,7 @@ std::string JsonWriter::escape_json(const std::string& s) {
     return out;
 }
 
-std::string JsonWriter::write(const VrSceneValue& val, int indent) {
+std::string JsonWriter::write(const VrSceneValue& val, int indent, bool uncompressed) {
     switch (val.type) {
         case VrSceneValue::NONE:
             return "null";
@@ -906,6 +927,12 @@ std::string JsonWriter::write(const VrSceneValue& val, int indent) {
             return out;
         }
         case VrSceneValue::BINARY_I32: {
+            if (!uncompressed) {
+                std::string b64 = base64_encode(val.bin_i32.data(),
+                    val.bin_i32.size() * sizeof(int32_t));
+                return "{\"enc\":\"base64\",\"type\":\"int32\",\"count\":" +
+                    std::to_string(val.bin_i32.size()) + ",\"data\":\"" + b64 + "\"}";
+            }
             std::string out = "[";
             for (size_t i = 0; i < val.bin_i32.size(); ++i) {
                 if (i > 0) out += ", ";
@@ -915,6 +942,12 @@ std::string JsonWriter::write(const VrSceneValue& val, int indent) {
             return out;
         }
         case VrSceneValue::BINARY_F32: {
+            if (!uncompressed) {
+                std::string b64 = base64_encode(val.bin_f32.data(),
+                    val.bin_f32.size() * sizeof(float));
+                return "{\"enc\":\"base64\",\"type\":\"float32\",\"count\":" +
+                    std::to_string(val.bin_f32.size()) + ",\"data\":\"" + b64 + "\"}";
+            }
             std::string out = "[";
             for (size_t i = 0; i < val.bin_f32.size(); ++i) {
                 if (i > 0) out += ", ";
@@ -929,7 +962,7 @@ std::string JsonWriter::write(const VrSceneValue& val, int indent) {
             if (val.list_val.empty()) return "[]";
             std::string out = "[\n";
             for (size_t i = 0; i < val.list_val.size(); ++i) {
-                out += indent_str(indent + 1) + write(val.list_val[i], indent + 1);
+                out += indent_str(indent + 1) + write(val.list_val[i], indent + 1, uncompressed);
                 if (i + 1 < val.list_val.size()) out += ",";
                 out += "\n";
             }
@@ -953,7 +986,7 @@ std::string JsonWriter::write(const VrSceneValue& val, int indent) {
     return "null";
 }
 
-std::string JsonWriter::write(const VrSceneDocument& doc, int indent) {
+std::string JsonWriter::write(const VrSceneDocument& doc, int indent, bool uncompressed) {
     std::string out = "{\n";
     out += indent_str(indent + 1) + "\"plugins\": [\n";
     for (size_t i = 0; i < doc.plugins.size(); ++i) {
@@ -965,7 +998,7 @@ std::string JsonWriter::write(const VrSceneDocument& doc, int indent) {
 
         size_t pi = 0;
         for (const auto& kv : p.props) {
-            out += indent_str(indent + 4) + "\"" + escape_json(kv.first) + "\": " + write(kv.second, indent + 4);
+            out += indent_str(indent + 4) + "\"" + escape_json(kv.first) + "\": " + write(kv.second, indent + 4, uncompressed);
             ++pi;
             if (pi < p.props.size()) out += ",";
             out += "\n";

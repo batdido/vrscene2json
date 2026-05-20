@@ -1,6 +1,7 @@
 #include "VrSceneParser.h"
 #include <iostream>
 #include <fstream>
+#include <cstring>
 #include <windows.h>
 
 struct Timer {
@@ -24,12 +25,24 @@ static void progress_fn(double pct) {
 }
 
 int main(int argc, char** argv) {
-    if (argc < 2) {
-        std::cerr << "Usage: vrscene2json input.vrscene [output.json]\n";
-        return 1;
+    bool uncompressed = false;
+    const char* in_path = nullptr;
+    const char* out_path = nullptr;
+
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "-u") == 0 || strcmp(argv[i], "--uncompressed") == 0)
+            uncompressed = true;
+        else if (!in_path)
+            in_path = argv[i];
+        else if (!out_path)
+            out_path = argv[i];
     }
 
-    std::string in_path = argv[1];
+    // Dumping to console is not actually desirable, as outputs could be massive
+    if (!in_path || !out_path) {
+        std::cerr << "Usage: vrscene2json [-u|--uncompressed] input.vrscene [output.json]\n";
+        return 1;
+    }
 
     Timer read_timer;
     std::ifstream in(in_path, std::ios::binary);
@@ -48,7 +61,8 @@ int main(int argc, char** argv) {
 
     try {
         std::cerr << "File: " << in_path << " (" << text.size() << " bytes)\n"
-                  << "Read:  " << read_ms << " ms\n";
+                  << "Read:  " << read_ms << " ms\n"
+                  << "Mode:  " << (uncompressed ? "uncompressed" : "encoded") << "\n";
 
         Timer parse_timer;
         VrSceneDocument doc = VrSceneParser::parse(text, progress_fn);
@@ -59,14 +73,14 @@ int main(int argc, char** argv) {
                   << doc.plugins.size() << " plugins\n";
 
         Timer write_timer;
-        std::string json = JsonWriter::write(doc, 0);
+        std::string json = JsonWriter::write(doc, 0, uncompressed);
         double json_ms = write_timer.elapsed_ms();
 
         std::cerr << "Json:  " << json_ms << " ms (" << json.size() << " bytes)\n";
 
         Timer file_timer;
-        if (argc >= 3) {
-            std::ofstream out(argv[2]);
+        if (out_path) {
+            std::ofstream out(out_path);
             out << json;
         } else {
             std::cout << json;
