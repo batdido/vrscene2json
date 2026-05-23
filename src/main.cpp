@@ -38,8 +38,7 @@ int main(int argc, char** argv) {
             out_path = argv[i];
     }
 
-    // Dumping to console is not actually desirable, as outputs could be massive
-    if (!in_path || !out_path) {
+    if (!in_path) {
         std::cerr << "Usage: vrscene2json [-u|--uncompressed] input.vrscene [output.json]\n";
         return 1;
     }

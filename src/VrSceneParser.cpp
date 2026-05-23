@@ -30,6 +30,22 @@ static std::string trim_right(const std::string& s) {
     return s.substr(0, e);
 }
 
+static std::string format_json_number(double value, int precision = 17) {
+    if (!std::isfinite(value))
+        return "null";
+
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%.*g", precision, value);
+
+    std::string s(buf);
+    if (s.find('.') == std::string::npos &&
+        s.find('e') == std::string::npos &&
+        s.find('E') == std::string::npos)
+        s += ".0";
+
+    return s;
+}
+
 // strip C++ style // comments, careful with strings
 static std::string strip_comments(const std::string& line) {
     bool in_str = false;
@@ -676,7 +692,6 @@ static VrSceneValue parse_list(const std::string& inner) {
             if (c == '{') { ++brace_depth; ++pos; continue; }
             if (c == '}') { --brace_depth; ++pos; continue; }
             if (c == ',' && paren_depth == 0 && brace_depth == 0) {
-                ++pos;
                 break;
             }
             ++pos;
@@ -686,6 +701,9 @@ static VrSceneValue parse_list(const std::string& inner) {
         item = trim(item);
         if (!item.empty())
             v.list_val.push_back(parse_value(item));
+
+        if (pos < s.size() && s[pos] == ',')
+            ++pos;
     }
 
     return v;
@@ -796,16 +814,16 @@ static VrSceneValue parse_value(const std::string& val_str) {
         return parse_list_vector_hex(inner);
     }
 
-    // List(...)
+    // List(...) — also matches ListVector(...), ListInt(...), etc.
     if (s.size() >= 5 && s.substr(0, 4) == "List" && s.back() == ')') {
         // Make sure it's not ListIntHex, ListVectorHex, ListString
         if (s.substr(0, 11) != "ListIntHex(" &&
             s.substr(0, 14) != "ListVectorHex(" &&
             s.substr(0, 10) != "ListString(" &&
             s.size() > 5) {
-            size_t pos = 5;
-            // skip '('
-            while (pos < s.size() && (unsigned char)s[pos] <= ' ') ++pos;
+            // scan forward to the opening '('
+            size_t pos = 4;
+            while (pos < s.size() && s[pos] != '(') ++pos;
             std::string inner;
             if (pos < s.size() && s[pos] == '(') {
                 ++pos;
@@ -893,31 +911,23 @@ std::string JsonWriter::write(const VrSceneValue& val, int indent, bool uncompre
             return "\"" + escape_json(val.str_val) + "\"";
         case VrSceneValue::INT:
             return std::to_string(val.int_val);
-        case VrSceneValue::FLOAT: {
-            char buf[64];
-            snprintf(buf, sizeof(buf), "%.17g", val.float_val);
-            std::string s(buf);
-            if (s.find('.') == std::string::npos && s.find('e') == std::string::npos && s.find('E') == std::string::npos)
-                s += ".0";
-            return s;
-        }
+        case VrSceneValue::FLOAT:
+            return format_json_number(val.float_val);
         case VrSceneValue::COLOR:
-            return "[" + std::to_string(val.color_val[0]) + ", " +
-                   std::to_string(val.color_val[1]) + ", " +
-                   std::to_string(val.color_val[2]) + "]";
+            return "[" + format_json_number(val.color_val[0]) + ", " +
+                   format_json_number(val.color_val[1]) + ", " +
+                   format_json_number(val.color_val[2]) + "]";
         case VrSceneValue::VECTOR:
-            return "[" + std::to_string(val.vec_val[0]) + ", " +
-                   std::to_string(val.vec_val[1]) + ", " +
-                   std::to_string(val.vec_val[2]) + "]";
+            return "[" + format_json_number(val.vec_val[0]) + ", " +
+                   format_json_number(val.vec_val[1]) + ", " +
+                   format_json_number(val.vec_val[2]) + "]";
         case VrSceneValue::TRANSFORM: {
             std::string out = "[\n";
             for (int r = 0; r < 4; ++r) {
                 out += indent_str(indent + 1) + "[";
                 for (int c = 0; c < 4; ++c) {
                     if (c > 0) out += ", ";
-                    char buf[64];
-                    snprintf(buf, sizeof(buf), "%.17g", val.transform_val[r][c]);
-                    out += buf;
+                    out += format_json_number(val.transform_val[r][c]);
                 }
                 out += "]";
                 if (r < 3) out += ",";
@@ -951,9 +961,7 @@ std::string JsonWriter::write(const VrSceneValue& val, int indent, bool uncompre
             std::string out = "[";
             for (size_t i = 0; i < val.bin_f32.size(); ++i) {
                 if (i > 0) out += ", ";
-                char buf[64];
-                snprintf(buf, sizeof(buf), "%.8g", val.bin_f32[i]);
-                out += buf;
+                out += format_json_number(val.bin_f32[i], 8);
             }
             out += "]";
             return out;
